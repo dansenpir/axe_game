@@ -2,6 +2,7 @@
 
 // Player structure to encapsulate the player's properties and behaviors.
 // Using a struct helps organize related data and functions, improving code readability and maintainability.
+// It promotes encapsulation by bundling data (x, y, radius, color) and functions (Draw, Move) that operate on that data.
 struct Player {
     int x;       // X position of the circle's center on the screen
     int y;       // Y position of the circle's center on the screen
@@ -14,16 +15,20 @@ struct Player {
     }
 
     // Move the player based on keyboard input, respecting screen boundaries.
-    // 'speed' is now defined in pixels per second.
+    // 'speed' is defined in pixels per second.
     void Move(int screenWidth, int screenHeight, float speed) {
-        float deltaTime = GetFrameTime(); // Get the time elapsed since the last frame in seconds.
-        // Calculate movement in pixels per frame based on speed (pixels/second) and deltaTime (seconds).
-        // This ensures frame-rate independent movement: (pixels/second) * (seconds/frame) = pixels/frame.
-        // The 60.0f multiplier was removed as deltaTime already handles frame rate variations.
+        // Get the time elapsed since the last frame in seconds.
+        // This is crucial for frame-rate independent movement.
+        // Without deltaTime, movement speed would vary with FPS.
+        float deltaTime = GetFrameTime(); 
+        
+        // Calculate movement in pixels per frame based on speed and deltaTime.
+        // static_cast<int> is used for explicit type conversion from float to int.
         int movementAmount = static_cast<int>(speed * deltaTime); 
 
         // Update position based on input with boundary checks.
-        // Boundary checks prevent the player from moving off-screen.
+        // The player's center (x, y) must stay within screen boundaries,
+        // considering its radius to prevent drawing outside the window.
         if ((IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) && x < screenWidth - radius) {
             x += movementAmount;
         }
@@ -40,7 +45,7 @@ struct Player {
 };
 
 // Axe structure to encapsulate the obstacle's properties and behaviors.
-// Similar to Player, using a struct for Axe promotes modularity.
+// Similar to Player, using a struct for Axe promotes modularity and organization.
 struct Axe {
     int x;       // X position of the top-left corner of the square axe
     int y;       // Y position of the top-left corner of the square axe
@@ -59,9 +64,10 @@ struct Axe {
         y += static_cast<int>(speed * deltaTime); // Update Y position based on speed and deltaTime.
 
         // Reverse direction if axe hits top or bottom edge.
-        // This creates a simple bouncing behavior.
+        // The axe's y position refers to its top-left corner.
+        // So, y + length is its bottom edge.
         if (y > screenHeight - length || y < 0) {
-            speed = -speed; // Invert the speed to change direction
+            speed = -speed; // Invert the speed to change direction (bounce effect)
         }
     }
 };
@@ -75,17 +81,17 @@ bool CheckCollision(Player player, Axe axe) {
                          static_cast<float>(axe.length), static_cast<float>(axe.length)};
     
     // Use Raylib's optimized function for circle-rectangle collision detection.
-    // CheckCollisionCircleRec is efficient and accurate for these primitive shapes.
+    // This function is highly optimized for performance.
     return CheckCollisionCircleRec(Vector2{static_cast<float>(player.x), static_cast<float>(player.y)},
                                    static_cast<float>(player.radius), axeRect);
 }
 
 // Enum to manage different distinct states of the game.
-// Using an enum for game states is a common and effective way to structure game logic,
-// creating a simple state machine that controls what happens at any given moment.
+// Using an enum for game states is a common and highly recommended design pattern (State Machine).
+// It makes the game logic clear, organized, and easy to manage transitions between different behaviors.
 enum GameState {
     MENU,       // Initial game state: displays a start screen.
-    PLAYING,    // Active gameplay state: player and axe move, collision is checked.
+    PLAYING,    // Active gameplay state: player and axe move, collision is checked, score updates.
     GAME_OVER   // State after a collision occurs: displays game over message and restart option.
 };
 
@@ -98,65 +104,93 @@ int main() {
     // Initialize the game window with specified dimensions and title.
     InitWindow(screenWidth, screenHeight, windowTitle); 
     // Set the target frames per second (FPS) to 60.
-    // This helps ensure consistent game speed across different machines,
-    // especially when coupled with deltaTime.
+    // This helps ensure consistent game speed across different machines
+    // and provides a stable deltaTime for calculations.
     SetTargetFPS(60); 
 
     // Initialize game entities with their starting properties.
-    // Player starts in the center, axe at the top.
     Player player = {screenWidth / 2, screenHeight / 2, 25, PURPLE}; 
     Axe axe = {300, 0, 50, 200.0f, RED}; // Axe speed adjusted to 200 pixels/second.
 
     // Set the initial game state to MENU.
     GameState currentState = MENU; 
 
+    // Variables for scoring system.
+    int score = 0;         // Current score based on survival time (1 point per second).
+    int highScore = 0;     // Highest score achieved in any game session so far (in-memory).
+    float scoreTimer = 0.0f; // Timer to accumulate time for scoring (in seconds).
+
     // Variable to track if a collision was detected (for debug visualization).
     bool collisionDetected = false;
 
     // Main game loop. Continues as long as the window is not closed.
-    // This loop is the heart of the game, handling updates and rendering.
+    // This loop handles game updates (logic) and rendering (drawing) for each frame.
     while (!WindowShouldClose()) { 
-        BeginDrawing(); // Start the drawing phase. All drawing commands go between BeginDrawing and EndDrawing.
+        BeginDrawing(); // Start the drawing phase. All drawing commands must be placed between BeginDrawing() and EndDrawing().
         ClearBackground(WHITE); // Clear the screen with a white color for a fresh frame.
+                                // This prevents "smearing" effects from previous frames.
 
         // Game logic and rendering based on the current game state.
-        // The switch statement effectively manages the game's flow.
         switch (currentState) {
             case MENU:
                 // Display instructions for starting the game.
+                // MeasureText helps center the text by calculating its width.
                 DrawText("Press SPACE to Start", screenWidth / 2 - MeasureText("Press SPACE to Start", 20) / 2, screenHeight / 2 - 10, 20, BLACK);
                 if (IsKeyPressed(KEY_SPACE)) {
+                    // Reset game state variables for a new game.
+                    // This ensures a clean start from the beginning.
+                    player.x = screenWidth / 2;
+                    player.y = screenHeight / 2;
+                    axe.y = 0;
+                    axe.speed = 200.0f; 
+                    score = 0; 
+                    scoreTimer = 0.0f; 
                     currentState = PLAYING; // Transition to the PLAYING state.
                 }
                 break;
 
             case PLAYING:
                 // Update game entities' positions.
-                // Player speed set to 300 pixels/second.
-                player.Move(screenWidth, screenHeight, 300.0f); 
+                player.Move(screenWidth, screenHeight, 300.0f); // Player speed set to 300 pixels/second.
                 axe.Move(screenHeight); // Axe moves based on its own speed.
+
+                // Update score based on survival time (1 point per second).
+                scoreTimer += GetFrameTime(); // Accumulate time.
+                if (scoreTimer >= 1.0f) { // Every second, increment score.
+                    score += 1;
+                    scoreTimer -= 1.0f; // Subtract 1.0f to maintain precision for remaining time.
+                                        // e.g., if scoreTimer is 1.1s, it becomes 0.1s for the next second.
+                }
 
                 // Check for collision between player and axe.
                 collisionDetected = CheckCollision(player, axe);
                 if (collisionDetected) {
-                    currentState = GAME_OVER; // If collision detected, transition to GAME_OVER state.
+                    currentState = GAME_OVER; // Transition to GAME_OVER state on collision.
                 }
 
                 // Draw game entities with debug visualization for collision.
                 player.Draw(); // Render the player.
                 axe.Draw();    // Render the axe.
-                // If collision is detected, draw an outline around the player and axe for visual confirmation.
-                // This is a valuable debugging technique to confirm collision detection.
                 if (collisionDetected) {
+                    // Draw outlines around colliding objects for visual debugging.
                     DrawCircleLines(player.x, player.y, player.radius, BLACK);
                     DrawRectangleLines(axe.x, axe.y, axe.length, axe.length, BLACK);
                 }
+                // Display current score in the top-left corner.
+                // TextFormat is used to create a formatted string with the current score.
+                DrawText(TextFormat("Score: %i", score), 10, 10, 20, BLACK);
                 break;
 
             case GAME_OVER:
-                // Display game over messages.
+                // Update high score if current score is higher.
+                if (score > highScore) {
+                    highScore = score;
+                }
+                // Display game over messages with current and high score.
                 DrawText("Game Over!", screenWidth / 2 - MeasureText("Game Over!", 40) / 2, screenHeight / 2 - 50, 40, RED);
-                DrawText("Press R to Restart", screenWidth / 2 - MeasureText("Press R to Restart", 20) / 2, screenHeight / 2 + 10, 20, BLACK);
+                DrawText(TextFormat("Your Score: %i", score), screenWidth / 2 - MeasureText(TextFormat("Your Score: %i", score), 20) / 2, screenHeight / 2 - 10, 20, BLACK);
+                DrawText(TextFormat("High Score: %i", highScore), screenWidth / 2 - MeasureText(TextFormat("High Score: %i", highScore), 20) / 2, screenHeight / 2 + 20, 20, BLACK);
+                DrawText("Press R to Restart", screenWidth / 2 - MeasureText("Press R to Restart", 20) / 2, screenHeight / 2 + 50, 20, BLACK);
                 
                 // Reset game state on 'R' key press.
                 if (IsKeyPressed(KEY_R)) {
@@ -164,15 +198,19 @@ int main() {
                     player.x = screenWidth / 2;
                     player.y = screenHeight / 2;
                     axe.y = 0;
-                    axe.speed = 200.0f; // Reset axe speed to its initial value (positive to start moving down).
+                    axe.speed = 200.0f; // Reset axe speed to its initial value.
+                    score = 0; // Reset score for new game.
+                    scoreTimer = 0.0f; // Reset timer for scoring.
                     currentState = PLAYING; // Return to PLAYING state to restart the game.
                 }
                 break;
         }
 
         EndDrawing(); // End the drawing phase and display the frame.
+                      // This swaps the back buffer to the front, making all drawn elements visible.
     }
 
     CloseWindow(); // Close the window and release Raylib resources.
+                   // This is important for proper cleanup and avoiding resource leaks.
     return 0;      // Return 0 to indicate successful execution.
 }
