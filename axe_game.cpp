@@ -2,7 +2,6 @@
 
 // Player structure to encapsulate the player's properties and behaviors.
 // Using a struct helps organize related data and functions, improving code readability and maintainability.
-// It promotes encapsulation by bundling data (x, y, radius, color) and functions (Draw, Move) that operate on that data.
 struct Player {
     int x;       // X position of the circle's center on the screen
     int y;       // Y position of the circle's center on the screen
@@ -17,17 +16,16 @@ struct Player {
     // Move the player based on keyboard input, respecting screen boundaries.
     // 'speed' is defined in pixels per second.
     void Move(int screenWidth, int screenHeight, float speed) {
-        // Get the time elapsed since the last frame in seconds.
-        // This is crucial for frame-rate independent movement.
-        // Without deltaTime, movement speed would vary with FPS.
-        float deltaTime = GetFrameTime(); 
-        
+        float deltaTime = GetFrameTime(); // Get the time elapsed since the last frame in seconds.
+                                          // This is crucial for frame-rate independent movement.
+                                          // Movement is calculated based on time, not frames,
+                                          // ensuring consistent speed regardless of FPS fluctuations.
         // Calculate movement in pixels per frame based on speed and deltaTime.
-        // static_cast<int> is used for explicit type conversion from float to int.
+        // The result is cast to int because pixel positions are typically integer values.
         int movementAmount = static_cast<int>(speed * deltaTime); 
 
         // Update position based on input with boundary checks.
-        // The player's center (x, y) must stay within screen boundaries,
+        // The player's center (x, y) must always be within the screen bounds,
         // considering its radius to prevent drawing outside the window.
         if ((IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) && x < screenWidth - radius) {
             x += movementAmount;
@@ -45,12 +43,15 @@ struct Player {
 };
 
 // Axe structure to encapsulate the obstacle's properties and behaviors.
-// Similar to Player, using a struct for Axe promotes modularity and organization.
+// Similar to Player, using a struct for Axe promotes modularity and encapsulates
+// all axe-related data and functions within a single, coherent unit.
 struct Axe {
     int x;       // X position of the top-left corner of the square axe
     int y;       // Y position of the top-left corner of the square axe
     int length;  // Side length of the square axe
-    float speed; // Movement speed of the axe (pixels per second)
+    float speedX; // Horizontal movement speed of the axe (pixels per second).
+                  // Using float for speed allows for more precise, fractional speed values.
+    float speedY; // Vertical movement speed of the axe (pixels per second).
     Color color; // Color of the axe
 
     // Draw the axe on the screen.
@@ -58,37 +59,47 @@ struct Axe {
         DrawRectangle(x, y, length, length, color);
     }
 
-    // Move the axe vertically, bouncing off screen edges.
-    void Move(int screenHeight) {
+    // Move the axe in both horizontal and vertical directions, bouncing off all screen edges.
+    // The movement is time-based using deltaTime to ensure smooth and consistent motion
+    // regardless of the game's frame rate.
+    void Move(int screenWidth, int screenHeight) {
         float deltaTime = GetFrameTime(); // Crucial for frame-rate independent movement.
-        y += static_cast<int>(speed * deltaTime); // Update Y position based on speed and deltaTime.
+        x += static_cast<int>(speedX * deltaTime); // Update X position based on horizontal speed.
+        y += static_cast<int>(speedY * deltaTime); // Update Y position based on vertical speed.
 
-        // Reverse direction if axe hits top or bottom edge.
-        // The axe's y position refers to its top-left corner.
-        // So, y + length is its bottom edge.
-        if (y > screenHeight - length || y < 0) {
-            speed = -speed; // Invert the speed to change direction (bounce effect)
+        // Reverse horizontal direction if axe hits left or right edge.
+        // The axe's x-coordinate refers to its top-left corner.
+        // So, for the right edge, we check x + length.
+        if (x + length > screenWidth || x < 0) {
+            speedX = -speedX; // Invert horizontal speed to bounce.
+        }
+        // Reverse vertical direction if axe hits top or bottom edge.
+        // Similar logic applies for the bottom edge: y + length.
+        if (y + length > screenHeight || y < 0) {
+            speedY = -speedY; // Invert vertical speed to bounce.
         }
     }
 };
 
 // Function to check collision between the player (circle) and the axe (rectangle).
 // This function acts as a wrapper for Raylib's optimized collision detection.
+// It takes the Player and Axe structs directly, making the call site cleaner.
 bool CheckCollision(Player player, Axe axe) {
     // Convert the axe's properties into a Raylib Rectangle type.
-    // Raylib's collision functions often require specific data types.
+    // Raylib's collision functions often require its specific data structures.
     Rectangle axeRect = {static_cast<float>(axe.x), static_cast<float>(axe.y),
                          static_cast<float>(axe.length), static_cast<float>(axe.length)};
     
     // Use Raylib's optimized function for circle-rectangle collision detection.
-    // This function is highly optimized for performance.
+    // Vector2 is used for the circle's center.
     return CheckCollisionCircleRec(Vector2{static_cast<float>(player.x), static_cast<float>(player.y)},
                                    static_cast<float>(player.radius), axeRect);
 }
 
 // Enum to manage different distinct states of the game.
-// Using an enum for game states is a common and highly recommended design pattern (State Machine).
-// It makes the game logic clear, organized, and easy to manage transitions between different behaviors.
+// Using an enum for game states is a common and effective way to structure game logic,
+// making the code more readable, maintainable, and less prone to errors
+// compared to using magic numbers or boolean flags for state.
 enum GameState {
     MENU,       // Initial game state: displays a start screen.
     PLAYING,    // Active gameplay state: player and axe move, collision is checked, score updates.
@@ -96,21 +107,23 @@ enum GameState {
 };
 
 int main() {
-    // Window configuration constants.
+    // Window configuration constants. Using 'const' ensures these values cannot be accidentally changed,
+    // improving code robustness and readability.
     const int screenWidth = 800;
     const int screenHeight = 450;
     const char* windowTitle = "Dan's Axe Game";
 
     // Initialize the game window with specified dimensions and title.
     InitWindow(screenWidth, screenHeight, windowTitle); 
-    // Set the target frames per second (FPS) to 60.
-    // This helps ensure consistent game speed across different machines
-    // and provides a stable deltaTime for calculations.
+    // Set the target frames per second (FPS) to 60. This helps ensure consistent game speed
+    // and smooth animation, especially when combined with deltaTime-based movement.
     SetTargetFPS(60); 
 
     // Initialize game entities with their starting properties.
     Player player = {screenWidth / 2, screenHeight / 2, 25, PURPLE}; 
-    Axe axe = {300, 0, 50, 200.0f, RED}; // Axe speed adjusted to 200 pixels/second.
+    // Axe starts with initial horizontal speed (speedX) and vertical speed (speedY),
+    // creating an immediate diagonal movement.
+    Axe axe = {300, 0, 50, 150.0f, 200.0f, RED}; 
 
     // Set the initial game state to MENU.
     GameState currentState = MENU; 
@@ -119,32 +132,41 @@ int main() {
     int score = 0;         // Current score based on survival time (1 point per second).
     int highScore = 0;     // Highest score achieved in any game session so far (in-memory).
     float scoreTimer = 0.0f; // Timer to accumulate time for scoring (in seconds).
+    // Tracks the score at which the axe's speed was last increased.
+    // This prevents the speed from increasing multiple times for the same score point
+    // if the game loop runs very fast.
+    int lastSpeedIncreaseScore = 0; 
 
-    // Variable to track if a collision was detected (for debug visualization).
+    // Variable to track if a collision was detected (primarily for debug visualization).
     bool collisionDetected = false;
 
     // Main game loop. Continues as long as the window is not closed.
-    // This loop handles game updates (logic) and rendering (drawing) for each frame.
+    // This loop handles game state updates, input processing, and rendering for each frame.
     while (!WindowShouldClose()) { 
-        BeginDrawing(); // Start the drawing phase. All drawing commands must be placed between BeginDrawing() and EndDrawing().
+        BeginDrawing(); // Start the drawing phase. All drawing commands between BeginDrawing()
+                        // and EndDrawing() are buffered and then drawn to the screen.
         ClearBackground(WHITE); // Clear the screen with a white color for a fresh frame.
-                                // This prevents "smearing" effects from previous frames.
+                                // This prevents "smearing" or drawing artifacts from previous frames.
 
         // Game logic and rendering based on the current game state.
+        // The switch statement elegantly manages transitions and behaviors for different game phases.
         switch (currentState) {
             case MENU:
                 // Display instructions for starting the game.
-                // MeasureText helps center the text by calculating its width.
+                // MeasureText is used to center the text dynamically.
                 DrawText("Press SPACE to Start", screenWidth / 2 - MeasureText("Press SPACE to Start", 20) / 2, screenHeight / 2 - 10, 20, BLACK);
                 if (IsKeyPressed(KEY_SPACE)) {
                     // Reset game state variables for a new game.
-                    // This ensures a clean start from the beginning.
+                    // This ensures a fresh start each time the game is played.
                     player.x = screenWidth / 2;
                     player.y = screenHeight / 2;
+                    axe.x = 300;
                     axe.y = 0;
-                    axe.speed = 200.0f; 
+                    axe.speedX = 150.0f; // Initial horizontal speed.
+                    axe.speedY = 200.0f; // Initial vertical speed.
                     score = 0; 
                     scoreTimer = 0.0f; 
+                    lastSpeedIncreaseScore = 0;
                     currentState = PLAYING; // Transition to the PLAYING state.
                 }
                 break;
@@ -152,14 +174,30 @@ int main() {
             case PLAYING:
                 // Update game entities' positions.
                 player.Move(screenWidth, screenHeight, 300.0f); // Player speed set to 300 pixels/second.
-                axe.Move(screenHeight); // Axe moves based on its own speed.
+                axe.Move(screenWidth, screenHeight); // Axe moves in both directions based on its speeds.
 
                 // Update score based on survival time (1 point per second).
-                scoreTimer += GetFrameTime(); // Accumulate time.
+                scoreTimer += GetFrameTime(); // Accumulate time. GetFrameTime() provides the time
+                                              // elapsed since the last frame, ensuring time-based scoring.
                 if (scoreTimer >= 1.0f) { // Every second, increment score.
                     score += 1;
                     scoreTimer -= 1.0f; // Subtract 1.0f to maintain precision for remaining time.
-                                        // e.g., if scoreTimer is 1.1s, it becomes 0.1s for the next second.
+                                        // This prevents scoreTimer from growing indefinitely and losing precision.
+                }
+
+                // Increase axe speed every 10 points to make the game progressively harder.
+                // This dynamic difficulty scaling keeps the game challenging as the player improves.
+                if (score > lastSpeedIncreaseScore && score % 10 == 0) {
+                    // Increase speed by 10% each time, up to a maximum.
+                    // Capping the speed prevents the "tunneling" effect (where objects move so fast
+                    // they pass through others without collision detection) and keeps the game playable.
+                    if (axe.speedX < 300.0f) { // Maximum horizontal speed.
+                        axe.speedX *= 1.1f; // Increase by 10%.
+                    }
+                    if (axe.speedY < 400.0f) { // Maximum vertical speed.
+                        axe.speedY *= 1.1f; // Increase by 10%.
+                    }
+                    lastSpeedIncreaseScore = score; // Update the last score at which speed was increased.
                 }
 
                 // Check for collision between player and axe.
@@ -173,11 +211,12 @@ int main() {
                 axe.Draw();    // Render the axe.
                 if (collisionDetected) {
                     // Draw outlines around colliding objects for visual debugging.
+                    // This is helpful during development to verify collision logic.
                     DrawCircleLines(player.x, player.y, player.radius, BLACK);
                     DrawRectangleLines(axe.x, axe.y, axe.length, axe.length, BLACK);
                 }
                 // Display current score in the top-left corner.
-                // TextFormat is used to create a formatted string with the current score.
+                // TextFormat is a convenient Raylib function for creating formatted strings.
                 DrawText(TextFormat("Score: %i", score), 10, 10, 20, BLACK);
                 break;
 
@@ -195,22 +234,24 @@ int main() {
                 // Reset game state on 'R' key press.
                 if (IsKeyPressed(KEY_R)) {
                     // Reset player and axe positions to their initial values.
+                    // This prepares the game for a new round.
                     player.x = screenWidth / 2;
                     player.y = screenHeight / 2;
+                    axe.x = 300;
                     axe.y = 0;
-                    axe.speed = 200.0f; // Reset axe speed to its initial value.
+                    axe.speedX = 150.0f; // Reset horizontal speed.
+                    axe.speedY = 200.0f; // Reset vertical speed.
                     score = 0; // Reset score for new game.
                     scoreTimer = 0.0f; // Reset timer for scoring.
+                    lastSpeedIncreaseScore = 0; // Reset speed increase tracker.
                     currentState = PLAYING; // Return to PLAYING state to restart the game.
                 }
                 break;
         }
 
         EndDrawing(); // End the drawing phase and display the frame.
-                      // This swaps the back buffer to the front, making all drawn elements visible.
     }
 
     CloseWindow(); // Close the window and release Raylib resources.
-                   // This is important for proper cleanup and avoiding resource leaks.
     return 0;      // Return 0 to indicate successful execution.
 }
